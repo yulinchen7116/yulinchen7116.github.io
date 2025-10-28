@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Neurosynth Frontend</title>
+  <link rel="stylesheet" href="./public/styles.css"/>
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-800">
+  <!-- Header -->
+  <header class="max-w-5xl mx-auto px-4 py-6">
+    <h1 class="text-2xl font-bold">Tren Backend Frontend</h1>
+    <p class="text-sm text-slate-500">Base URL: 
+      <code>https://mil.psy.ntu.edu.tw:5000</code>
+    </p>
+    <p class="text-xs text-slate-400 mt-1">
+      Fetch https://mil.psy.ntu.edu.tw:5000/terms
+    </p>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-5xl mx-auto px-4 space-y-6">
+    <!-- Toolbar -->
+    <section class="grid gap-3 md:grid-cols-3">
+      <!-- /terms -->
+      <div class="p-4 bg-white rounded-xl shadow">
+        <h2 class="font-semibold mb-2">/terms</h2>
+        <button id="btn-all-terms" class="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">
+          Load All Terms
+        </button>
+      </div>
+
+      <!-- /terms/:t1 -->
+      <div class="p-4 bg-white rounded-xl shadow">
+        <h2 class="font-semibold mb-2">/terms/&lt;t1&gt;</h2>
+        <div class="flex gap-2">
+          <input id="input-term" class="flex-1 px-3 py-2 border rounded-lg" placeholder="e.g., amygdala"/>
+          <button id="btn-term" class="px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">
+            Lookup
+          </button>
+        </div>
+      </div>
+
+      <!-- /query/:q/studies -->
+      <div class="p-4 bg-white rounded-xl shadow">
+        <h2 class="font-semibold mb-2">/query/&lt;q&gt;/studies</h2>
+        <div class="flex gap-2">
+          <input id="input-query" class="flex-1 px-3 py-2 border rounded-lg" placeholder='e.g., amygdala not emotion'/>
+          <button id="btn-query" class="px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">
+            Search
+          </button>
+        </div>
+        <p class="mt-1 text-xs text-slate-500">Supports logical operators (e.g., <code>not</code>).</p>
+      </div>
+    </section>
+
+    <!-- Output -->
+    <section class="p-4 bg-white rounded-xl shadow">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold">Response</h2>
+        <button id="btn-copy" class="text-sm px-2 py-1 border rounded hover:bg-slate-100">Copy JSON</button>
+      </div>
+      <pre id="out" class="whitespace-pre-wrap text-sm p-3 bg-slate-900 text-slate-100 rounded-lg overflow-auto min-h-[200px]">Ready.</pre>
+    </section>
+
+    <!-- Pretty cards -->
+    <section id="pretty" class="grid gap-3 md:grid-cols-2 lg:grid-cols-3"></section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="max-w-5xl mx-auto px-4 py-8 text-center text-xs text-slate-500">
+    © 2025 — Built with Tailwind v4 + Fetch
+  </footer>
+
+  <!-- JavaScript -->
+  <script src="./src/app.js"></script>
+</body>
+</html>
