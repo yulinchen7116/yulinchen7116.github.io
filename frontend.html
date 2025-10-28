@@ -30,27 +30,28 @@
         </button>
       </div>
 
-      <!-- /terms/:t1 -->
+      <!-- /terms/<t1> -->
       <div class="p-4 bg-white rounded-xl shadow">
-        <h2 class="font-semibold mb-2">/terms/&lt;t1&gt;</h2>
+        <h2 class="font-semibold mb-2">/terms/&lt;t1&gt; <span class="text-xs text-slate-400">(live)</span></h2>
         <div class="flex gap-2">
           <input id="input-term" class="flex-1 px-3 py-2 border rounded-lg" placeholder="e.g., amygdala"/>
           <button id="btn-term" class="px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">
             Lookup
           </button>
         </div>
+        <p class="mt-1 text-xs text-slate-500">Typing will auto-search.</p>
       </div>
 
-      <!-- /query/:q/studies -->
+      <!-- /query/<q>/studies -->
       <div class="p-4 bg-white rounded-xl shadow">
-        <h2 class="font-semibold mb-2">/query/&lt;q&gt;/studies</h2>
+        <h2 class="font-semibold mb-2">/query/&lt;q&gt;/studies <span class="text-xs text-slate-400">(live)</span></h2>
         <div class="flex gap-2">
           <input id="input-query" class="flex-1 px-3 py-2 border rounded-lg" placeholder='e.g., amygdala not emotion'/>
           <button id="btn-query" class="px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">
             Search
           </button>
         </div>
-        <p class="mt-1 text-xs text-slate-500">Supports logical operators (e.g., <code>not</code>).</p>
+        <p class="mt-1 text-xs text-slate-500">Typing will auto-search. Supports logical operators (e.g., <code>not</code>).</p>
       </div>
     </section>
 
