@@ -4,10 +4,8 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Neurosynth Frontend (React Autocomplete)</title>
-  <!-- 若有 Tailwind 的 build，可載入；沒有也不影響功能 -->
   <link rel="stylesheet" href="./public/styles.css"/>
   <style>
-    /* 保底樣式（沒有 Tailwind 時同樣可用） */
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f8fafc;color:#0f172a}
     .container{max-width:960px;margin:2rem auto;padding:1rem}
     .card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
@@ -16,7 +14,7 @@
     .btn:disabled{opacity:.6;cursor:not-allowed}
     .input{flex:1;border:1px solid #cbd5e1;border-radius:10px;padding:.5rem .75rem}
     .hint{font-size:12px;color:#64748b;margin-top:.25rem}
-    .suggest{position:absolute;z-index:50;margin-top:4px;width:100%;max-height:16rem;overflow:auto;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.06)}
+    .suggest{position:absolute;z-index:9999;margin-top:4px;width:100%;max-height:16rem;overflow:auto;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.06)}
     .suggest li{padding:.5rem .75rem;cursor:pointer}
     .suggest li:hover,.suggest li.active{background:#f1f5f9}
     pre{white-space:pre-wrap;background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;min-height:120px}
@@ -28,18 +26,17 @@
 <body>
   <div id="root"></div>
 
-  <!-- React 18 UMD + Babel 轉譯 JSX -->
+  <!-- React 18 UMD + Babel -->
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <!-- 你的 App（用 JSX，交給 Babel 轉） -->
   <script type="text/babel">
     const {useEffect, useMemo, useRef, useState} = React;
-    const BASE = 'https://hpc.psy.ntu.edu.tw:5000'; // 新主機
+    const BASE = 'https://hpc.psy.ntu.edu.tw:5000';
 
-    // 小工具：debounce 值
-    function useDebounced(value, delay=250) {
+    // debounce hook
+    function useDebounced(value, delay=200) {
       const [v, setV] = useState(value);
       useEffect(() => {
         const t = setTimeout(() => setV(value), delay);
@@ -48,7 +45,7 @@
       return v;
     }
 
-    function Autocomplete({ terms, onPick, minChars=1, placeholder='e.g., amygdala' }) {
+    function Autocomplete({ terms, ensureTermsLoaded, onPick, minChars=1, placeholder='e.g., amygdala' }) {
       const [q, setQ] = useState('');
       const [open, setOpen] = useState(false);
       const [active, setActive] = useState(-1);
@@ -56,11 +53,20 @@
       const listRef  = useRef(null);
       const debounced = useDebounced(q, 120);
 
+      // 若 terms 還沒載到，聚焦時再嘗試載入一次
+      const onFocus = async () => {
+        if ((terms?.length || 0) === 0) {
+          await ensureTermsLoaded?.();
+        }
+        if (q.trim().length >= minChars) setOpen(true);
+      };
+
       const list = useMemo(() => {
         const p = debounced.trim().toLowerCase();
         if (p.length < minChars) return [];
-        // 前綴匹配；若想改成包含，將 startsWith 改為 includes
-        return terms.filter(t => t.toLowerCase().startsWith(p)).slice(0, 30);
+        return (terms||[])
+          .filter(t => t.toLowerCase().startsWith(p))
+          .slice(0, 30);
       }, [debounced, terms, minChars]);
 
       useEffect(() => {
@@ -76,21 +82,13 @@
 
       const onKeyDown = (e) => {
         if (!open) return;
-        if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          setActive(a => (a + 1) % list.length);
-        } else if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          setActive(a => (a - 1 + list.length) % list.length);
-        } else if (e.key === 'Enter') {
-          e.preventDefault();
-          if (active >= 0) pick(list[active]); else if (q.trim()) onPick?.(q.trim());
-        } else if (e.key === 'Escape') {
-          setOpen(false);
-        }
+        if (e.key === 'ArrowDown') { e.preventDefault(); setActive(a => (a + 1) % list.length); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(a => (a - 1 + list.length) % list.length); }
+        else if (e.key === 'Enter') { e.preventDefault(); if (active >= 0) pick(list[active]); else if (q.trim()) onPick?.(q.trim()); }
+        else if (e.key === 'Escape') { setOpen(false); }
       };
 
-      // 點外面關閉
+      // 點外關閉
       useEffect(() => {
         const onDoc = (e) => {
           if (!listRef.current || !inputRef.current) return;
@@ -112,7 +110,7 @@
               placeholder={placeholder}
               value={q}
               onInput={e => setQ(e.currentTarget.value)}
-              onFocus={() => { if (list.length) setOpen(true); }}
+              onFocus={onFocus}
               onKeyDown={onKeyDown}
               autoComplete="off"
               aria-autocomplete="list"
@@ -132,7 +130,7 @@
                     key={t}
                     role="option"
                     className={i === active ? 'active' : ''}
-                    onMouseDown={(e) => { e.preventDefault(); }}  // 防止 blur
+                    onMouseDown={(e) => { e.preventDefault(); }}
                     onClick={() => pick(t)}
                     onMouseEnter={() => setActive(i)}
                   >
@@ -148,29 +146,47 @@
     }
 
     function App(){
-      const [status, setStatus] = useState('checking');
+      const [status, setStatus] = useState('checking');   // online / offline / checking
       const [terms, setTerms]   = useState([]);
       const [response, setResponse] = useState('Ready.');
       const [cards, setCards] = useState([]);
+      const [retry, setRetry] = useState(0); // 重試次數
 
-      // 啟動時載入 /terms 做快取
+      // 供 Autocomplete 呼叫，必要時再載一次 terms
+      const ensureTermsLoaded = async () => {
+        if (terms.length > 0) return;
+        await fetchTerms();
+      };
+
+      const fetchTerms = async () => {
+        try{
+          setResponse(`Loading: ${BASE}/terms ...`);
+          const r = await fetch(`${BASE}/terms`);
+          if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
+          const data = await r.json();
+          if (!Array.isArray(data)) throw new Error('Unexpected response for /terms');
+          setTerms(data);
+          setStatus('online');
+          setResponse(`Loaded ${data.length} terms`);
+        } catch (e){
+          setStatus('offline');
+          setResponse('Failed to load /terms: ' + (e.message || String(e)));
+        }
+      };
+
+      // 啟動時載入
+      useEffect(() => { fetchTerms(); }, []);
+
+      // 若 offline 或 terms=0，5 秒後自動重試（最多 8 次）
       useEffect(() => {
-        (async () => {
-          try{
-            setResponse(`Loading: ${BASE}/terms ...`);
-            const r = await fetch(`${BASE}/terms`);
-            if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
-            const data = await r.json();
-            if (!Array.isArray(data)) throw new Error('Unexpected response for /terms');
-            setTerms(data);
-            setStatus('online');
-            setResponse(`Loaded ${data.length} terms`);
-          } catch (e){
-            setStatus('offline');
-            setResponse('Failed to load /terms: ' + (e.message || String(e)));
-          }
-        })();
-      }, []);
+        if (status === 'online' && terms.length > 0) return;
+        if (retry >= 8) return;
+        const t = setTimeout(async () => {
+          setRetry(r => r + 1);
+          await fetchTerms();
+        }, 5000);
+        return () => clearTimeout(t);
+      }, [status, terms.length, retry]);
 
       const lookupTerm = async (t1) => {
         try {
@@ -226,7 +242,9 @@
         <div className="container">
           <header className="row" style={{justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}}>
             <h1 style={{fontWeight:700,fontSize:'22px'}}>LoTUS-BF (React demo)</h1>
-            <span className={'badge ' + (status==='online'?'ok':'bad')}>• backend {status==='online'?'online':'offline'}</span>
+            <span className={'badge ' + (status==='online'?'ok':'bad')}>
+              • backend {status} — Terms loaded: {terms.length}
+            </span>
           </header>
 
           <div className="row" style={{alignItems:'flex-start'}}>
@@ -234,6 +252,7 @@
               <h2 style={{fontWeight:600,marginBottom:'8px'}}>Terms</h2>
               <Autocomplete
                 terms={terms}
+                ensureTermsLoaded={ensureTermsLoaded}
                 onPick={lookupTerm}
                 minChars={1}
                 placeholder="type a term, e.g., amygdala"
@@ -267,7 +286,7 @@
             </div>
           </div>
 
-          <div className="card" style={{marginTop:'12px'}}>
+          <div className="card" style={{margin-top:'12px'}}>
             <h2 style={{fontWeight:600,marginBottom:'8px'}}>Response</h2>
             <pre id="out">{response}</pre>
           </div>
