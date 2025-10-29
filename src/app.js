@@ -1,4 +1,4 @@
-const BASE = 'https://mil.psy.ntu.edu.tw:5000';
+const BASE = 'https://hpc.psy.ntu.edu.tw:5000';
 const $ = (sel) => document.querySelector(sel);
 const out = $('#out');
 const pretty = $('#pretty');
