@@ -4,10 +4,10 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Neurosynth Frontend (React Autocomplete)</title>
-  <!-- 若你有 Tailwind build，這行會套到樣式；沒有也不影響功能 -->
+  <!-- 若有 Tailwind 的 build，可載入；沒有也不影響功能 -->
   <link rel="stylesheet" href="./public/styles.css"/>
   <style>
-    /* 簡單保底樣式（沒有 Tailwind 時） */
+    /* 保底樣式（沒有 Tailwind 時同樣可用） */
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f8fafc;color:#0f172a}
     .container{max-width:960px;margin:2rem auto;padding:1rem}
     .card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
@@ -28,44 +28,24 @@
 <body>
   <div id="root"></div>
 
-  <script type="module">
-    import React, {useEffect, useMemo, useRef, useState} from 'https://esm.sh/react@18';
-    import { createRoot } from 'https://esm.sh/react-dom@18/client';
+  <!-- React 18 UMD + Babel 轉譯 JSX -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    const BASE = 'https://hpc.psy.ntu.edu.tw:5000'; // 老師公告的新主機
+  <!-- 你的 App（用 JSX，交給 Babel 轉） -->
+  <script type="text/babel">
+    const {useEffect, useMemo, useRef, useState} = React;
+    const BASE = 'https://hpc.psy.ntu.edu.tw:5000'; // 新主機
 
-    const useDebounced = (value, delay=250) => {
+    // 小工具：debounce 值
+    function useDebounced(value, delay=250) {
       const [v, setV] = useState(value);
       useEffect(() => {
         const t = setTimeout(() => setV(value), delay);
         return () => clearTimeout(t);
       }, [value, delay]);
       return v;
-    };
-
-    function useFetchJson(url, opts) {
-      const [state, setState] = useState({ loading: !!url, data: null, error: null });
-      useEffect(() => {
-        if (!url) return;
-        const ctrl = new AbortController();
-        setState({ loading: true, data: null, error: null });
-        fetch(url, { ...opts, signal: ctrl.signal })
-          .then(async r => {
-            const ct = r.headers.get('content-type') || '';
-            if (!r.ok) {
-              const txt = await r.text();
-              throw new Error(\`HTTP \${r.status} \${r.statusText}\\n\\n\${txt}\`);
-            }
-            return ct.includes('application/json') ? r.json() : r.text();
-          })
-          .then(data => setState({ loading:false, data, error:null }))
-          .catch(err => {
-            if (err.name === 'AbortError') return;
-            setState({ loading:false, data:null, error: err });
-          });
-        return () => ctrl.abort();
-      }, [url]);
-      return state;
     }
 
     function Autocomplete({ terms, onPick, minChars=1, placeholder='e.g., amygdala' }) {
@@ -74,13 +54,12 @@
       const [active, setActive] = useState(-1);
       const inputRef = useRef(null);
       const listRef  = useRef(null);
-
       const debounced = useDebounced(q, 120);
 
       const list = useMemo(() => {
         const p = debounced.trim().toLowerCase();
         if (p.length < minChars) return [];
-        // 前綴匹配；想改成包含可把 startsWith 改成 includes
+        // 前綴匹配；若想改成包含，將 startsWith 改為 includes
         return terms.filter(t => t.toLowerCase().startsWith(p)).slice(0, 30);
       }, [debounced, terms, minChars]);
 
@@ -125,26 +104,26 @@
       const qLower = q.toLowerCase();
 
       return (
-        <div style="position:relative">
-          <div class="row">
+        <div style={{position:'relative'}}>
+          <div className="row">
             <input
               ref={inputRef}
-              class="input"
+              className="input"
               placeholder={placeholder}
               value={q}
               onInput={e => setQ(e.currentTarget.value)}
               onFocus={() => { if (list.length) setOpen(true); }}
               onKeyDown={onKeyDown}
-              autocomplete="off"
+              autoComplete="off"
               aria-autocomplete="list"
               aria-expanded={open}
               aria-controls="term-suggest"
             />
-            <button class="btn" onClick={() => q.trim() && onPick(q.trim())}>Lookup</button>
+            <button className="btn" onClick={() => q.trim() && onPick(q.trim())}>Lookup</button>
           </div>
 
           {open && list.length > 0 && (
-            <ul id="term-suggest" ref={listRef} class="suggest" role="listbox">
+            <ul id="term-suggest" ref={listRef} className="suggest" role="listbox">
               {list.map((t, i) => {
                 const pre = t.slice(0, qLower.length);
                 const rest = t.slice(qLower.length);
@@ -152,7 +131,7 @@
                   <li
                     key={t}
                     role="option"
-                    class={i === active ? 'active' : ''}
+                    className={i === active ? 'active' : ''}
                     onMouseDown={(e) => { e.preventDefault(); }}  // 防止 blur
                     onClick={() => pick(t)}
                     onMouseEnter={() => setActive(i)}
@@ -163,7 +142,7 @@
               })}
             </ul>
           )}
-          <div class="hint">隨打字即時建議；↑/↓ 選取、Enter 確認、Esc 關閉。</div>
+          <div className="hint">隨打字即時建議；↑/↓ 選取、Enter 確認、Esc 關閉。</div>
         </div>
       );
     }
@@ -174,18 +153,18 @@
       const [response, setResponse] = useState('Ready.');
       const [cards, setCards] = useState([]);
 
-      // 啟動時載入 /terms 做快取（給 autocomplete 用）
+      // 啟動時載入 /terms 做快取
       useEffect(() => {
         (async () => {
           try{
-            setResponse(\`Loading: \${BASE}/terms ...\`);
-            const r = await fetch(\`\${BASE}/terms\`);
-            if (!r.ok) throw new Error(\`HTTP \${r.status} \${r.statusText}\`);
+            setResponse(`Loading: ${BASE}/terms ...`);
+            const r = await fetch(`${BASE}/terms`);
+            if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
             const data = await r.json();
             if (!Array.isArray(data)) throw new Error('Unexpected response for /terms');
             setTerms(data);
             setStatus('online');
-            setResponse(\`Loaded \${data.length} terms\`);
+            setResponse(`Loaded ${data.length} terms`);
           } catch (e){
             setStatus('offline');
             setResponse('Failed to load /terms: ' + (e.message || String(e)));
@@ -195,23 +174,23 @@
 
       const lookupTerm = async (t1) => {
         try {
-          setResponse(\`Requesting: \${BASE}/terms/\${encodeURIComponent(t1)} ...\`);
+          setResponse(`Requesting: ${BASE}/terms/${encodeURIComponent(t1)} ...`);
           setCards([]);
-          const r = await fetch(\`\${BASE}/terms/\${encodeURIComponent(t1)}\`);
-          const info = \`HTTP \${r.status} \${r.statusText}\`;
+          const r = await fetch(`${BASE}/terms/${encodeURIComponent(t1)}`);
+          const info = `HTTP ${r.status} ${r.statusText}`;
           const ct = r.headers.get('content-type') || '';
           if (!r.ok){
             const txt = await r.text();
-            setResponse(info + '\\n\\n' + txt);
+            setResponse(info + '\n\n' + txt);
             return;
           }
           if (ct.includes('application/json')){
             const data = await r.json();
-            setResponse(info + '\\n' + JSON.stringify(data, null, 2));
+            setResponse(info + '\n' + JSON.stringify(data, null, 2));
             setCards(Array.isArray(data) ? data : []);
           } else {
             const txt = await r.text();
-            setResponse(info + '\\n\\n' + txt);
+            setResponse(info + '\n\n' + txt);
           }
         } catch (e){
           setResponse('Error: ' + (e.message || String(e)));
@@ -220,23 +199,23 @@
 
       const queryStudies = async (q) => {
         try{
-          setResponse(\`Requesting: \${BASE}/query/\${encodeURIComponent(q)}/studies ...\`);
+          setResponse(`Requesting: ${BASE}/query/${encodeURIComponent(q)}/studies ...`);
           setCards([]);
-          const r = await fetch(\`\${BASE}/query/\${encodeURIComponent(q)}/studies\`);
-          const info = \`HTTP \${r.status} \${r.statusText}\`;
+          const r = await fetch(`${BASE}/query/${encodeURIComponent(q)}/studies`);
+          const info = `HTTP ${r.status} ${r.statusText}`;
           const ct = r.headers.get('content-type') || '';
           if (!r.ok){
             const txt = await r.text();
-            setResponse(info + '\\n\\n' + txt);
+            setResponse(info + '\n\n' + txt);
             return;
           }
           if (ct.includes('application/json')){
             const data = await r.json();
-            setResponse(info + '\\n' + JSON.stringify(data, null, 2));
+            setResponse(info + '\n' + JSON.stringify(data, null, 2));
             setCards(Array.isArray(data) ? data : []);
           } else {
             const txt = await r.text();
-            setResponse(info + '\\n\\n' + txt);
+            setResponse(info + '\n\n' + txt);
           }
         } catch (e){
           setResponse('Error: ' + (e.message || String(e)));
@@ -244,17 +223,15 @@
       };
 
       return (
-        <div class="container">
-          <header class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px">
-            <h1 style="font-weight:700;font-size:22px">LoTUS-BF (React demo)</h1>
-            <span class={'badge ' + (status==='online'?'ok':'bad')}>
-              • backend {status==='online'?'online':'offline'}
-            </span>
+        <div className="container">
+          <header className="row" style={{justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}}>
+            <h1 style={{fontWeight:700,fontSize:'22px'}}>LoTUS-BF (React demo)</h1>
+            <span className={'badge ' + (status==='online'?'ok':'bad')}>• backend {status==='online'?'online':'offline'}</span>
           </header>
 
-          <div class="row" style="align-items:flex-start">
-            <div class="card" style="flex:1">
-              <h2 style="font-weight:600;margin-bottom:8px">Terms</h2>
+          <div className="row" style={{alignItems:'flex-start'}}>
+            <div className="card" style={{flex:1}}>
+              <h2 style={{fontWeight:600,marginBottom:'8px'}}>Terms</h2>
               <Autocomplete
                 terms={terms}
                 onPick={lookupTerm}
@@ -263,42 +240,43 @@
               />
             </div>
 
-            <div class="card" style="flex:1">
-              <h2 style="font-weight:600;margin-bottom:8px">Query Builder</h2>
-              <div class="row">
-                <input id="q" class="input" placeholder="e.g., amygdala NOT emotion"/>
-                <button class="btn" onClick={() => {
+            <div className="card" style={{flex:1}}>
+              <h2 style={{fontWeight:600,marginBottom:'8px'}}>Query Builder</h2>
+              <div className="row">
+                <input id="q" className="input" placeholder="e.g., amygdala NOT emotion"/>
+                <button className="btn" onClick={() => {
                   const q = document.getElementById('q').value.trim();
                   if (q) queryStudies(q);
                 }}>Search</button>
               </div>
-              <div class="hint">支援 AND / OR / NOT；右側會秀原始 JSON。</div>
+              <div className="hint">支援 AND / OR / NOT；右側會秀原始 JSON。</div>
             </div>
           </div>
 
-          <div class="card" style="margin-top:12px">
-            <h2 style="font-weight:600;margin-bottom:8px">Studies / Associations</h2>
-            <div class="row" style="flex-wrap:wrap">
+          <div className="card" style={{marginTop:'12px'}}>
+            <h2 style={{fontWeight:600,marginBottom:'8px'}}>Studies / Associations</h2>
+            <div className="row" style={{flexWrap:'wrap'}}>
               {cards.slice(0, 60).map((x, i) => (
-                <div key={i} class="card" style="min-width:260px;flex:1">
-                  <div style="font-weight:600;margin-bottom:6px">{x.title || x.name || String(x)}</div>
-                  {x.id && <div style="font-size:13px;color:#475569">ID: <code>{x.id}</code></div>}
-                  {x.description && <div style="font-size:13px;color:#475569">{x.description}</div>}
+                <div key={i} className="card" style={{minWidth:'260px',flex:1}}>
+                  <div style={{fontWeight:600,marginBottom:'6px'}}>{x.title || x.name || String(x)}</div>
+                  {x.id && <div style={{fontSize:'13px',color:'#475569'}}>ID: <code>{x.id}</code></div>}
+                  {x.description && <div style={{fontSize:'13px',color:'#475569'}}>{x.description}</div>}
                 </div>
               ))}
-              {cards.length === 0 && <div style="color:#64748b">（尚無結果）</div>}
+              {cards.length === 0 && <div style={{color:'#64748b'}}>（尚無結果）</div>}
             </div>
           </div>
 
-          <div class="card" style="margin-top:12px">
-            <h2 style="font-weight:600;margin-bottom:8px">Response</h2>
+          <div className="card" style={{marginTop:'12px'}}>
+            <h2 style={{fontWeight:600,marginBottom:'8px'}}>Response</h2>
             <pre id="out">{response}</pre>
           </div>
         </div>
       );
     }
 
-    createRoot(document.getElementById('root')).render(React.createElement(App));
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
   </script>
 </body>
 </html>
