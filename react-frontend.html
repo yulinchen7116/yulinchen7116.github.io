@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Neurosynth Frontend (React Autocomplete)</title>
+  <!-- 若你有 Tailwind build，這行會套到樣式；沒有也不影響功能 -->
+  <link rel="stylesheet" href="./public/styles.css"/>
+  <style>
+    /* 簡單保底樣式（沒有 Tailwind 時） */
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f8fafc;color:#0f172a}
+    .container{max-width:960px;margin:2rem auto;padding:1rem}
+    .card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+    .row{display:flex;gap:12px}
+    .btn{background:#2563eb;color:#fff;border:none;border-radius:10px;padding:.5rem .75rem;cursor:pointer}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .input{flex:1;border:1px solid #cbd5e1;border-radius:10px;padding:.5rem .75rem}
+    .hint{font-size:12px;color:#64748b;margin-top:.25rem}
+    .suggest{position:absolute;z-index:50;margin-top:4px;width:100%;max-height:16rem;overflow:auto;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.06)}
+    .suggest li{padding:.5rem .75rem;cursor:pointer}
+    .suggest li:hover,.suggest li.active{background:#f1f5f9}
+    pre{white-space:pre-wrap;background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;min-height:120px}
+    .badge{display:inline-flex;align-items:center;gap:.4ch;padding:.2rem .6rem;border-radius:999px;font-size:12px}
+    .ok{background:#dcfce7;color:#166534}
+    .bad{background:#fee2e2;color:#991b1b}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="module">
+    import React, {useEffect, useMemo, useRef, useState} from 'https://esm.sh/react@18';
+    import { createRoot } from 'https://esm.sh/react-dom@18/client';
+
+    const BASE = 'https://hpc.psy.ntu.edu.tw:5000'; // 老師公告的新主機
+
+    const useDebounced = (value, delay=250) => {
+      const [v, setV] = useState(value);
+      useEffect(() => {
+        const t = setTimeout(() => setV(value), delay);
+        return () => clearTimeout(t);
+      }, [value, delay]);
+      return v;
+    };
+
+    function useFetchJson(url, opts) {
+      const [state, setState] = useState({ loading: !!url, data: null, error: null });
+      useEffect(() => {
+        if (!url) return;
+        const ctrl = new AbortController();
+        setState({ loading: true, data: null, error: null });
+        fetch(url, { ...opts, signal: ctrl.signal })
+          .then(async r => {
+            const ct = r.headers.get('content-type') || '';
+            if (!r.ok) {
+              const txt = await r.text();
+              throw new Error(\`HTTP \${r.status} \${r.statusText}\\n\\n\${txt}\`);
+            }
+            return ct.includes('application/json') ? r.json() : r.text();
+          })
+          .then(data => setState({ loading:false, data, error:null }))
+          .catch(err => {
+            if (err.name === 'AbortError') return;
+            setState({ loading:false, data:null, error: err });
+          });
+        return () => ctrl.abort();
+      }, [url]);
+      return state;
+    }
+
+    function Autocomplete({ terms, onPick, minChars=1, placeholder='e.g., amygdala' }) {
+      const [q, setQ] = useState('');
+      const [open, setOpen] = useState(false);
+      const [active, setActive] = useState(-1);
+      const inputRef = useRef(null);
+      const listRef  = useRef(null);
+
+      const debounced = useDebounced(q, 120);
+
+      const list = useMemo(() => {
+        const p = debounced.trim().toLowerCase();
+        if (p.length < minChars) return [];
+        // 前綴匹配；想改成包含可把 startsWith 改成 includes
+        return terms.filter(t => t.toLowerCase().startsWith(p)).slice(0, 30);
+      }, [debounced, terms, minChars]);
+
+      useEffect(() => {
+        if (list.length) { setOpen(true); setActive(-1); }
+        else { setOpen(false); setActive(-1); }
+      }, [list]);
+
+      const pick = (term) => {
+        setQ(term);
+        setOpen(false);
+        onPick?.(term);
+      };
+
+      const onKeyDown = (e) => {
+        if (!open) return;
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setActive(a => (a + 1) % list.length);
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setActive(a => (a - 1 + list.length) % list.length);
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          if (active >= 0) pick(list[active]); else if (q.trim()) onPick?.(q.trim());
+        } else if (e.key === 'Escape') {
+          setOpen(false);
+        }
+      };
+
+      // 點外面關閉
+      useEffect(() => {
+        const onDoc = (e) => {
+          if (!listRef.current || !inputRef.current) return;
+          if (listRef.current.contains(e.target) || inputRef.current.contains(e.target)) return;
+          setOpen(false);
+        };
+        document.addEventListener('mousedown', onDoc);
+        return () => document.removeEventListener('mousedown', onDoc);
+      }, []);
+
+      const qLower = q.toLowerCase();
+
+      return (
+        <div style="position:relative">
+          <div class="row">
+            <input
+              ref={inputRef}
+              class="input"
+              placeholder={placeholder}
+              value={q}
+              onInput={e => setQ(e.currentTarget.value)}
+              onFocus={() => { if (list.length) setOpen(true); }}
+              onKeyDown={onKeyDown}
+              autocomplete="off"
+              aria-autocomplete="list"
+              aria-expanded={open}
+              aria-controls="term-suggest"
+            />
+            <button class="btn" onClick={() => q.trim() && onPick(q.trim())}>Lookup</button>
+          </div>
+
+          {open && list.length > 0 && (
+            <ul id="term-suggest" ref={listRef} class="suggest" role="listbox">
+              {list.map((t, i) => {
+                const pre = t.slice(0, qLower.length);
+                const rest = t.slice(qLower.length);
+                return (
+                  <li
+                    key={t}
+                    role="option"
+                    class={i === active ? 'active' : ''}
+                    onMouseDown={(e) => { e.preventDefault(); }}  // 防止 blur
+                    onClick={() => pick(t)}
+                    onMouseEnter={() => setActive(i)}
+                  >
+                    <b>{pre}</b>{rest}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <div class="hint">隨打字即時建議；↑/↓ 選取、Enter 確認、Esc 關閉。</div>
+        </div>
+      );
+    }
+
+    function App(){
+      const [status, setStatus] = useState('checking');
+      const [terms, setTerms]   = useState([]);
+      const [response, setResponse] = useState('Ready.');
+      const [cards, setCards] = useState([]);
+
+      // 啟動時載入 /terms 做快取（給 autocomplete 用）
+      useEffect(() => {
+        (async () => {
+          try{
+            setResponse(\`Loading: \${BASE}/terms ...\`);
+            const r = await fetch(\`\${BASE}/terms\`);
+            if (!r.ok) throw new Error(\`HTTP \${r.status} \${r.statusText}\`);
+            const data = await r.json();
+            if (!Array.isArray(data)) throw new Error('Unexpected response for /terms');
+            setTerms(data);
+            setStatus('online');
+            setResponse(\`Loaded \${data.length} terms\`);
+          } catch (e){
+            setStatus('offline');
+            setResponse('Failed to load /terms: ' + (e.message || String(e)));
+          }
+        })();
+      }, []);
+
+      const lookupTerm = async (t1) => {
+        try {
+          setResponse(\`Requesting: \${BASE}/terms/\${encodeURIComponent(t1)} ...\`);
+          setCards([]);
+          const r = await fetch(\`\${BASE}/terms/\${encodeURIComponent(t1)}\`);
+          const info = \`HTTP \${r.status} \${r.statusText}\`;
+          const ct = r.headers.get('content-type') || '';
+          if (!r.ok){
+            const txt = await r.text();
+            setResponse(info + '\\n\\n' + txt);
+            return;
+          }
+          if (ct.includes('application/json')){
+            const data = await r.json();
+            setResponse(info + '\\n' + JSON.stringify(data, null, 2));
+            setCards(Array.isArray(data) ? data : []);
+          } else {
+            const txt = await r.text();
+            setResponse(info + '\\n\\n' + txt);
+          }
+        } catch (e){
+          setResponse('Error: ' + (e.message || String(e)));
+        }
+      };
+
+      const queryStudies = async (q) => {
+        try{
+          setResponse(\`Requesting: \${BASE}/query/\${encodeURIComponent(q)}/studies ...\`);
+          setCards([]);
+          const r = await fetch(\`\${BASE}/query/\${encodeURIComponent(q)}/studies\`);
+          const info = \`HTTP \${r.status} \${r.statusText}\`;
+          const ct = r.headers.get('content-type') || '';
+          if (!r.ok){
+            const txt = await r.text();
+            setResponse(info + '\\n\\n' + txt);
+            return;
+          }
+          if (ct.includes('application/json')){
+            const data = await r.json();
+            setResponse(info + '\\n' + JSON.stringify(data, null, 2));
+            setCards(Array.isArray(data) ? data : []);
+          } else {
+            const txt = await r.text();
+            setResponse(info + '\\n\\n' + txt);
+          }
+        } catch (e){
+          setResponse('Error: ' + (e.message || String(e)));
+        }
+      };
+
+      return (
+        <div class="container">
+          <header class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px">
+            <h1 style="font-weight:700;font-size:22px">LoTUS-BF (React demo)</h1>
+            <span class={'badge ' + (status==='online'?'ok':'bad')}>
+              • backend {status==='online'?'online':'offline'}
+            </span>
+          </header>
+
+          <div class="row" style="align-items:flex-start">
+            <div class="card" style="flex:1">
+              <h2 style="font-weight:600;margin-bottom:8px">Terms</h2>
+              <Autocomplete
+                terms={terms}
+                onPick={lookupTerm}
+                minChars={1}
+                placeholder="type a term, e.g., amygdala"
+              />
+            </div>
+
+            <div class="card" style="flex:1">
+              <h2 style="font-weight:600;margin-bottom:8px">Query Builder</h2>
+              <div class="row">
+                <input id="q" class="input" placeholder="e.g., amygdala NOT emotion"/>
+                <button class="btn" onClick={() => {
+                  const q = document.getElementById('q').value.trim();
+                  if (q) queryStudies(q);
+                }}>Search</button>
+              </div>
+              <div class="hint">支援 AND / OR / NOT；右側會秀原始 JSON。</div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:12px">
+            <h2 style="font-weight:600;margin-bottom:8px">Studies / Associations</h2>
+            <div class="row" style="flex-wrap:wrap">
+              {cards.slice(0, 60).map((x, i) => (
+                <div key={i} class="card" style="min-width:260px;flex:1">
+                  <div style="font-weight:600;margin-bottom:6px">{x.title || x.name || String(x)}</div>
+                  {x.id && <div style="font-size:13px;color:#475569">ID: <code>{x.id}</code></div>}
+                  {x.description && <div style="font-size:13px;color:#475569">{x.description}</div>}
+                </div>
+              ))}
+              {cards.length === 0 && <div style="color:#64748b">（尚無結果）</div>}
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:12px">
+            <h2 style="font-weight:600;margin-bottom:8px">Response</h2>
+            <pre id="out">{response}</pre>
+          </div>
+        </div>
+      );
+    }
+
+    createRoot(document.getElementById('root')).render(React.createElement(App));
+  </script>
+</body>
+</html>
