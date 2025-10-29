@@ -37,18 +37,24 @@
         <!-- 讓下拉能絕對定位在輸入框下方 -->
         <div class="relative">
           <div class="flex gap-2">
-            <input id="input-term" class="flex-1 px-3 py-2 border rounded-lg" placeholder="e.g., amygdala"/>
-            <button id="btn-term" class="px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">Lookup</button>
+            <input id="input-term"
+                  class="flex-1 px-3 py-2 border rounded-lg"
+                  placeholder="e.g., amygdala"
+                  autocomplete="off" aria-autocomplete="list" aria-expanded="false"
+                  aria-controls="term-suggest"/>
+            <button id="btn-term"
+                    class="px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">
+              Lookup
+            </button>
           </div>
 
-          <!-- 建議清單：預設隱藏 -->
+          <!-- 建議清單（由 JS 動態填入） -->
           <ul id="term-suggest"
-              class="hidden absolute z-20 mt-1 w-full max-h-64 overflow-auto bg-white border rounded-lg shadow-sm divide-y">
-            <!-- 由 JS 動態填入 <li> -->
-          </ul>
+              class="hidden absolute z-20 mt-1 w-full max-h-64 overflow-auto bg-white border rounded-lg shadow divide-y"
+              role="listbox"></ul>
         </div>
 
-        <p class="mt-1 text-xs text-slate-500">Typing will auto-search. Suggestions update as you type.</p>
+        <p class="mt-1 text-xs text-slate-500">Typing will auto-suggest. Press ↑/↓ 選取、Enter 確認、Esc 關閉。</p>
       </div>
 
 
