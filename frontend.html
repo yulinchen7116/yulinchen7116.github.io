@@ -30,17 +30,27 @@
         </button>
       </div>
 
-      <!-- /terms/<t1> -->
+      <!-- /terms/:t1 -->
       <div class="p-4 bg-white rounded-xl shadow">
-        <h2 class="font-semibold mb-2">/terms/&lt;t1&gt; <span class="text-xs text-slate-400">(live)</span></h2>
-        <div class="flex gap-2">
-          <input id="input-term" class="flex-1 px-3 py-2 border rounded-lg" placeholder="e.g., amygdala"/>
-          <button id="btn-term" class="px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">
-            Lookup
-          </button>
+        <h2 class="font-semibold mb-2">/terms&lt;t1&gt; <span class="text-xs text-slate-400">(live)</span></h2>
+
+        <!-- 讓下拉能絕對定位在輸入框下方 -->
+        <div class="relative">
+          <div class="flex gap-2">
+            <input id="input-term" class="flex-1 px-3 py-2 border rounded-lg" placeholder="e.g., amygdala"/>
+            <button id="btn-term" class="px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">Lookup</button>
+          </div>
+
+          <!-- 建議清單：預設隱藏 -->
+          <ul id="term-suggest"
+              class="hidden absolute z-20 mt-1 w-full max-h-64 overflow-auto bg-white border rounded-lg shadow-sm divide-y">
+            <!-- 由 JS 動態填入 <li> -->
+          </ul>
         </div>
-        <p class="mt-1 text-xs text-slate-500">Typing will auto-search.</p>
+
+        <p class="mt-1 text-xs text-slate-500">Typing will auto-search. Suggestions update as you type.</p>
       </div>
+
 
       <!-- /query/<q>/studies -->
       <div class="p-4 bg-white rounded-xl shadow">
