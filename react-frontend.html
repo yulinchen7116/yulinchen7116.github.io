@@ -4,8 +4,10 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Neurosynth Frontend (React Autocomplete)</title>
+  <!-- 若你有 Tailwind 的 build，可保留這行；沒有也不影響功能 -->
   <link rel="stylesheet" href="./public/styles.css"/>
   <style>
+    /* 基本樣式（沒有 Tailwind 也能用） */
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f8fafc;color:#0f172a}
     .container{max-width:960px;margin:2rem auto;padding:1rem}
     .card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
@@ -26,19 +28,19 @@
 <body>
   <div id="root"></div>
 
-  <!-- React 18 UMD + Babel -->
+  <!-- React 18 UMD + Babel 轉 JSX -->
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <script type="text/babel">
-    const {useEffect, useMemo, useRef, useState} = React;
-    const BASES = [
-        'https://mil.psy.ntu.edu.tw:5000',
-        'https://hpc.psy.ntu.edu.tw:5000'
-    ];
+    const { useEffect, useMemo, useRef, useState } = React;
 
-    // debounce hook
+    /* ====== 設定：預設用 mil；需要可改成 hpc ====== */
+    const BASE = 'https://mil.psy.ntu.edu.tw:5000';
+    // const BASE = 'https://hpc.psy.ntu.edu.tw:5000';
+
+    /* ====== 小工具：debounce、彈性抓取與解析 ====== */
     function useDebounced(value, delay=200) {
       const [v, setV] = useState(value);
       useEffect(() => {
@@ -48,203 +50,174 @@
       return v;
     }
 
+    async function fetchFlexible(url, opts) {
+      const r = await fetch(url, opts);
+      if (!r.ok) {
+        const txt = await r.text().catch(()=> '');
+        throw new Error(`HTTP ${r.status} ${r.statusText}\n\n${txt}`);
+      }
+      const ct = r.headers.get('content-type') || '';
+      if (ct.includes('application/json')) return r.json();
+      const txt = await r.text();
+      try { return JSON.parse(txt); } catch { return txt; }
+    }
+
+    function extractArray(payload) {
+      if (Array.isArray(payload)) return payload;
+      if (payload && Array.isArray(payload.terms))   return payload.terms;
+      if (payload && Array.isArray(payload.data))    return payload.data;
+      if (payload && Array.isArray(payload.results)) return payload.results;
+      return null;
+    }
+
+    /* ====== Autocomplete：只用本地快取做即時建議 ====== */
     function Autocomplete({ terms, onPick, minChars = 1, placeholder = 'e.g., amygdala' }) {
-    const [q, setQ] = useState('');
-    const [open, setOpen] = useState(false);
-    const [active, setActive] = useState(-1);
-    const inputRef = useRef(null);
-    const listRef  = useRef(null);
+      const [q, setQ] = useState('');
+      const [open, setOpen] = useState(false);
+      const [active, setActive] = useState(-1);
+      const inputRef = useRef(null);
+      const listRef  = useRef(null);
 
-    // ✅ 只宣告一次
-    const debounced = useDebounced(q, 120);
+      const debounced = useDebounced(q, 120);
 
-    // ✅ onFocus 只控制開啟建議清單，不再做任何抓取
-    const onFocus = () => {
+      const onFocus = () => {
         if (q.trim().length >= minChars) setOpen(true);
-    };
+      };
 
-    // ✅ 前綴比對（本地快取篩選）
-    const list = useMemo(() => {
+      const list = useMemo(() => {
         const p = debounced.trim().toLowerCase();
         if (p.length < minChars) return [];
         return terms.filter(t => t.toLowerCase().startsWith(p)).slice(0, 30);
-    }, [debounced, terms, minChars]);
+      }, [debounced, terms, minChars]);
 
-    useEffect(() => {
+      useEffect(() => {
         if (list.length) { setOpen(true); setActive(-1); }
         else { setOpen(false); setActive(-1); }
-    }, [list]);
+      }, [list]);
 
-    const pick = (term) => {
+      const pick = (term) => {
         setQ(term);
         setOpen(false);
         onPick?.(term);
-    };
+      };
 
-    const onKeyDown = (e) => {
+      const onKeyDown = (e) => {
         if (!open) return;
         if (e.key === 'ArrowDown') { e.preventDefault(); setActive(a => (a + 1) % list.length); }
         else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(a => (a - 1 + list.length) % list.length); }
         else if (e.key === 'Enter') { e.preventDefault(); if (active >= 0) pick(list[active]); else if (q.trim()) onPick?.(q.trim()); }
         else if (e.key === 'Escape') { setOpen(false); }
-    };
+      };
 
-    // 點外關閉
-    useEffect(() => {
+      useEffect(() => {
         const onDoc = (e) => {
-        if (!listRef.current || !inputRef.current) return;
-        if (listRef.current.contains(e.target) || inputRef.current.contains(e.target)) return;
-        setOpen(false);
+          if (!listRef.current || !inputRef.current) return;
+          if (listRef.current.contains(e.target) || inputRef.current.contains(e.target)) return;
+          setOpen(false);
         };
         document.addEventListener('mousedown', onDoc);
         return () => document.removeEventListener('mousedown', onDoc);
-    }, []);
+      }, []);
 
-    const qLower = q.toLowerCase();
+      const qLower = q.toLowerCase();
 
-    return (
+      return (
         <div style={{ position:'relative' }}>
-        <div className="row">
+          <div className="row">
             <input
-            ref={inputRef}
-            className="input"
-            placeholder={placeholder}
-            value={q}
-            onInput={e => setQ(e.currentTarget.value)}
-            onFocus={onFocus}
-            onKeyDown={onKeyDown}
-            autoComplete="off"
-            aria-autocomplete="list"
-            aria-expanded={open}
-            aria-controls="term-suggest"
+              ref={inputRef}
+              className="input"
+              placeholder={placeholder}
+              value={q}
+              onInput={e => setQ(e.currentTarget.value)}
+              onFocus={onFocus}
+              onKeyDown={onKeyDown}
+              autoComplete="off"
+              aria-autocomplete="list"
+              aria-expanded={open}
+              aria-controls="term-suggest"
             />
             <button className="btn" onClick={() => q.trim() && onPick(q.trim())}>Lookup</button>
-        </div>
+          </div>
 
-        {open && list.length > 0 && (
+          {open && list.length > 0 && (
             <ul id="term-suggest" ref={listRef} className="suggest" role="listbox">
-            {list.map((t, i) => {
+              {list.map((t, i) => {
                 const pre  = t.slice(0, qLower.length);
                 const rest = t.slice(qLower.length);
                 return (
-                <li
+                  <li
                     key={t}
                     role="option"
                     className={i === active ? 'active' : ''}
                     onMouseDown={(e) => { e.preventDefault(); }}  // 避免 blur
                     onClick={() => pick(t)}
                     onMouseEnter={() => setActive(i)}
-                >
+                  >
                     <b>{pre}</b>{rest}
-                </li>
+                  </li>
                 );
-            })}
+              })}
             </ul>
-        )}
-        <div className="hint">隨打字即時建議；↑/↓ 選取、Enter 確認、Esc 關閉。</div>
+          )}
+          <div className="hint">隨打字即時建議；↑/↓ 選取、Enter 確認、Esc 關閉。</div>
         </div>
-    );
+      );
     }
 
-
+    /* ====== App：啟動時載入 /terms；Lookup/Query 呼叫 API ====== */
     function App(){
-      const [status, setStatus] = useState('checking');   // online / offline / checking
-      const [terms, setTerms]   = useState([]);
+      const [status, setStatus]   = useState('checking');   // online / offline / checking
+      const [terms, setTerms]     = useState([]);
       const [response, setResponse] = useState('Ready.');
-      const [cards, setCards] = useState([]);
-      const [retry, setRetry] = useState(0); // 重試次數
+      const [cards, setCards]     = useState([]);
 
-      // 供 Autocomplete 呼叫，必要時再載一次 terms
-      const ensureTermsLoaded = async () => {
-        if (terms.length > 0) return;
-        await fetchTerms();
-      };
-
-      const fetchTerms = async () => {
-        try{
-          setResponse(`Loading: ${BASE}/terms ...`);
-          const r = await fetch(`${BASE}/terms`);
-          if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
-          const data = await r.json();
-          if (!Array.isArray(data)) throw new Error('Unexpected response for /terms');
-          setTerms(data);
-          setStatus('online');
-          setResponse(`Loaded ${data.length} terms`);
-        } catch (e){
-          setStatus('offline');
-          setResponse('Failed to load /terms: ' + (e.message || String(e)));
-        }
-      };
-
-      // 啟動時載入
-        // 1) 通用抓取 + 彈性解析
-        async function fetchFlexible(url) {
-        const r = await fetch(url);
-        if (!r.ok) {
-            const txt = await r.text().catch(()=>'');
-            throw new Error(`HTTP ${r.status} ${r.statusText}\n\n${txt}`);
-        }
-        const ct = r.headers.get('content-type') || '';
-        if (ct.includes('application/json')) return r.json();
-        const txt = await r.text();
-        try { return JSON.parse(txt); } catch { return txt; }
-        }
-        function extractArray(payload) {
-        if (Array.isArray(payload)) return payload;
-        if (payload && Array.isArray(payload.terms))   return payload.terms;
-        if (payload && Array.isArray(payload.data))    return payload.data;
-        if (payload && Array.isArray(payload.results)) return payload.results;
-        return null;
-        }
-
-        // 2) 在 App() 裡：用這個版本載入 terms 一次
-        const [terms, setTerms] = React.useState([]);
-        const [status, setStatus] = React.useState('checking');
-        const [response, setResponse] = React.useState('Ready.');
-
-        React.useEffect(() => {
+      // 啟動時載入 /terms（一次）
+      useEffect(() => {
         (async () => {
-            try {
+          try{
             setResponse(`Loading: ${BASE}/terms ...`);
             const payload = await fetchFlexible(`${BASE}/terms`);
             const arr = extractArray(payload);
             if (arr) {
-                setTerms(arr);
-                setStatus('online');
-                setResponse(`Loaded ${arr.length} terms`);
+              setTerms(arr);
+              setStatus('online');
+              setResponse(`Loaded ${arr.length} terms`);
             } else {
-                // 就算格式怪，也不要丟錯，一樣先讓頁面可用
-                setTerms([]);
-                setStatus('online');
-                setResponse('Loaded /terms but unrecognized shape; autocomplete disabled.');
+              setTerms([]);
+              setStatus('online');
+              setResponse('Loaded /terms but unrecognized shape; autocomplete disabled.');
             }
-            } catch (e) {
+          } catch (e){
             setStatus('offline');
             setResponse('Failed to load /terms: ' + (e.message || String(e)));
-            }
+          }
         })();
-    }, []);
+      }, []);
 
+      // /terms/<t1>
+      const lookupTerm = async (t1) => {
+        try {
+          setResponse(`Requesting: ${BASE}/terms/${encodeURIComponent(t1)} ...`);
+          setCards([]);
+          const payload = await fetchFlexible(`${BASE}/terms/${encodeURIComponent(t1)}`);
+          setResponse('OK\n' + JSON.stringify(payload, null, 2));
+          const arr = Array.isArray(payload) ? payload : extractArray(payload) || [];
+          setCards(arr);
+        } catch (e){
+          setResponse('Error: ' + (e.message || String(e)));
+        }
+      };
+
+      // /query/<q>/studies
       const queryStudies = async (q) => {
         try{
           setResponse(`Requesting: ${BASE}/query/${encodeURIComponent(q)}/studies ...`);
           setCards([]);
-          const r = await fetch(`${BASE}/query/${encodeURIComponent(q)}/studies`);
-          const info = `HTTP ${r.status} ${r.statusText}`;
-          const ct = r.headers.get('content-type') || '';
-          if (!r.ok){
-            const txt = await r.text();
-            setResponse(info + '\n\n' + txt);
-            return;
-          }
-          if (ct.includes('application/json')){
-            const data = await r.json();
-            setResponse(info + '\n' + JSON.stringify(data, null, 2));
-            setCards(Array.isArray(data) ? data : []);
-          } else {
-            const txt = await r.text();
-            setResponse(info + '\n\n' + txt);
-          }
+          const payload = await fetchFlexible(`${BASE}/query/${encodeURIComponent(q)}/studies`);
+          setResponse('OK\n' + JSON.stringify(payload, null, 2));
+          const arr = Array.isArray(payload) ? payload : extractArray(payload) || [];
+          setCards(arr);
         } catch (e){
           setResponse('Error: ' + (e.message || String(e)));
         }
@@ -255,7 +228,7 @@
           <header className="row" style={{justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}}>
             <h1 style={{fontWeight:700,fontSize:'22px'}}>LoTUS-BF (React demo)</h1>
             <span className={'badge ' + (status==='online'?'ok':'bad')}>
-              • backend {status} — Terms loaded: {terms.length}
+              • backend {status} — Terms: {terms.length} — host: {new URL(BASE).host}
             </span>
           </header>
 
@@ -264,7 +237,6 @@
               <h2 style={{fontWeight:600,marginBottom:'8px'}}>Terms</h2>
               <Autocomplete
                 terms={terms}
-                ensureTermsLoaded={ensureTermsLoaded}
                 onPick={lookupTerm}
                 minChars={1}
                 placeholder="type a term, e.g., amygdala"
@@ -311,3 +283,4 @@
   </script>
 </body>
 </html>
+
