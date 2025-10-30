@@ -33,7 +33,10 @@
 
   <script type="text/babel">
     const {useEffect, useMemo, useRef, useState} = React;
-    const BASE = 'https://hpc.psy.ntu.edu.tw:5000';
+    const BASES = [
+        'https://mil.psy.ntu.edu.tw:5000',
+        'https://hpc.psy.ntu.edu.tw:5000'
+    ];
 
     // debounce hook
     function useDebounced(value, delay=200) {
@@ -54,20 +57,18 @@
       const debounced = useDebounced(q, 120);
 
       // 若 terms 還沒載到，聚焦時再嘗試載入一次
-      const onFocus = async () => {
-        if ((terms?.length || 0) === 0) {
-          await ensureTermsLoaded?.();
-        }
+      const onFocus = () => {
+        if (q.trim().length >= 1) setOpen(true);
+        }; 
         if (q.trim().length >= minChars) setOpen(true);
       };
 
-      const list = useMemo(() => {
+      const debounced = useDebounced(q, 120);
+      const list = React.useMemo(() => {
         const p = debounced.trim().toLowerCase();
-        if (p.length < minChars) return [];
-        return (terms||[])
-          .filter(t => t.toLowerCase().startsWith(p))
-          .slice(0, 30);
-      }, [debounced, terms, minChars]);
+        if (p.length < 1) return [];
+        return terms.filter(t => t.toLowerCase().startsWith(p)).slice(0, 30);
+    }, [debounced, terms]);
 
       useEffect(() => {
         if (list.length) { setOpen(true); setActive(-1); }
@@ -175,43 +176,53 @@
       };
 
       // 啟動時載入
-      useEffect(() => { fetchTerms(); }, []);
-
-      // 若 offline 或 terms=0，5 秒後自動重試（最多 8 次）
-      useEffect(() => {
-        if (status === 'online' && terms.length > 0) return;
-        if (retry >= 8) return;
-        const t = setTimeout(async () => {
-          setRetry(r => r + 1);
-          await fetchTerms();
-        }, 5000);
-        return () => clearTimeout(t);
-      }, [status, terms.length, retry]);
-
-      const lookupTerm = async (t1) => {
-        try {
-          setResponse(`Requesting: ${BASE}/terms/${encodeURIComponent(t1)} ...`);
-          setCards([]);
-          const r = await fetch(`${BASE}/terms/${encodeURIComponent(t1)}`);
-          const info = `HTTP ${r.status} ${r.statusText}`;
-          const ct = r.headers.get('content-type') || '';
-          if (!r.ok){
-            const txt = await r.text();
-            setResponse(info + '\n\n' + txt);
-            return;
-          }
-          if (ct.includes('application/json')){
-            const data = await r.json();
-            setResponse(info + '\n' + JSON.stringify(data, null, 2));
-            setCards(Array.isArray(data) ? data : []);
-          } else {
-            const txt = await r.text();
-            setResponse(info + '\n\n' + txt);
-          }
-        } catch (e){
-          setResponse('Error: ' + (e.message || String(e)));
+        // 1) 通用抓取 + 彈性解析
+        async function fetchFlexible(url) {
+        const r = await fetch(url);
+        if (!r.ok) {
+            const txt = await r.text().catch(()=>'');
+            throw new Error(`HTTP ${r.status} ${r.statusText}\n\n${txt}`);
         }
-      };
+        const ct = r.headers.get('content-type') || '';
+        if (ct.includes('application/json')) return r.json();
+        const txt = await r.text();
+        try { return JSON.parse(txt); } catch { return txt; }
+        }
+        function extractArray(payload) {
+        if (Array.isArray(payload)) return payload;
+        if (payload && Array.isArray(payload.terms))   return payload.terms;
+        if (payload && Array.isArray(payload.data))    return payload.data;
+        if (payload && Array.isArray(payload.results)) return payload.results;
+        return null;
+        }
+
+        // 2) 在 App() 裡：用這個版本載入 terms 一次
+        const [terms, setTerms] = React.useState([]);
+        const [status, setStatus] = React.useState('checking');
+        const [response, setResponse] = React.useState('Ready.');
+
+        React.useEffect(() => {
+        (async () => {
+            try {
+            setResponse(`Loading: ${BASE}/terms ...`);
+            const payload = await fetchFlexible(`${BASE}/terms`);
+            const arr = extractArray(payload);
+            if (arr) {
+                setTerms(arr);
+                setStatus('online');
+                setResponse(`Loaded ${arr.length} terms`);
+            } else {
+                // 就算格式怪，也不要丟錯，一樣先讓頁面可用
+                setTerms([]);
+                setStatus('online');
+                setResponse('Loaded /terms but unrecognized shape; autocomplete disabled.');
+            }
+            } catch (e) {
+            setStatus('offline');
+            setResponse('Failed to load /terms: ' + (e.message || String(e)));
+            }
+        })();
+    }, []);
 
       const queryStudies = async (q) => {
         try{
