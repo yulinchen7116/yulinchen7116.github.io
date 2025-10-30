@@ -70,8 +70,10 @@
       try { return JSON.parse(txt); } catch { return txt; }
     }
 
+    // 從 payload 裡抓到陣列（支援 related/terms/data/results）
     function extractArray(payload) {
       if (Array.isArray(payload)) return payload;
+      if (payload && Array.isArray(payload.related)) return payload.related;
       if (payload && Array.isArray(payload.terms))   return payload.terms;
       if (payload && Array.isArray(payload.data))    return payload.data;
       if (payload && Array.isArray(payload.results)) return payload.results;
@@ -83,6 +85,19 @@
       if (!items || items.length===0) {
         return <div style={{color:'#64748b'}}>（尚無結果）</div>;
       }
+
+      const formatCell = (k, v) => {
+        if (v == null) return '';
+        if (typeof v === 'number') {
+          if (k.toLowerCase().includes('jaccard') || k.toLowerCase().includes('score')) {
+            return v.toFixed(4);
+          }
+          return v; // 其他數字保持原樣（例如 co_count）
+        }
+        if (Array.isArray(v)) return v.join(', ');
+        if (typeof v === 'object') return JSON.stringify(v);
+        return String(v);
+      };
 
       // 字串陣列 → 二欄（#、Term）
       if (typeof items[0] === 'string') {
@@ -107,15 +122,14 @@
 
       // 物件陣列 → 選欄位
       const pickCols = (prefer) => {
+        // 若是 related 這種，優先選這些欄位
         const commonPref = (prefer==='studies')
           ? ['id','title','pmid','journal','year','authors','score','count']
-          : ['term','related','association','weight','score','count','id','title'];
+          : ['term','co_count','jaccard','association','weight','score','count','id','title'];
         const keys = new Set();
-        // 先用偏好欄位中實際存在的
         commonPref.forEach(k=>{
           if (items.some(x=>x && Object.prototype.hasOwnProperty.call(x,k))) keys.add(k);
         });
-        // 若還不夠，再補首筆物件的其他欄位（最多湊到 6 欄）
         if (keys.size < 6) {
           const extra = Object.keys(items[0]||{});
           for (const k of extra) {
@@ -141,12 +155,7 @@
               {items.map((row,i)=>(
                 <tr key={i}>
                   <td className="num">{i+1}</td>
-                  {cols.map(c=>{
-                    let v = row?.[c];
-                    if (Array.isArray(v)) v = v.join(', ');
-                    if (typeof v === 'object' && v !== null) v = JSON.stringify(v);
-                    return <td key={c}>{String(v ?? '')}</td>;
-                  })}
+                  {cols.map(c=> <td key={c}>{formatCell(c, row?.[c])}</td>)}
                 </tr>
               ))}
             </tbody>
@@ -252,11 +261,12 @@
 
     /* ====== App ====== */
     function App(){
-      const [status, setStatus]   = useState('checking');
-      const [terms, setTerms]     = useState([]);
+      const [status, setStatus]     = useState('checking');
+      const [terms, setTerms]       = useState([]);
       const [response, setResponse] = useState('Ready.');
-      const [cards, setCards]     = useState([]);
+      const [cards, setCards]       = useState([]);
       const [resultKind, setResultKind] = useState(''); // 'terms' | 'studies'
+      const [lastPayload, setLastPayload] = useState(null); // 給 Response 區判斷
 
       // 啟動時載入 /terms（一次，供 autocomplete）
       useEffect(() => {
@@ -281,35 +291,47 @@
         })();
       }, []);
 
-      // /terms/<t1> → 用表格呈現
+      // /terms/<t1> → Response 用表格呈現
       const lookupTerm = async (t1) => {
         try {
           setResponse(`Requesting: ${BASE}/terms/${encodeURIComponent(t1)} ...`);
           setCards([]);
           setResultKind('terms');
           const payload = await fetchFlexible(`${BASE}/terms/${encodeURIComponent(t1)}`);
-          setResponse('OK\n' + JSON.stringify(payload, null, 2));
-          const arr = Array.isArray(payload) ? payload : extractArray(payload) || [];
+          setLastPayload(payload);
+          setResponse(''); // 不再顯示原始 JSON
+          const arr = extractArray(payload) || [];
           setCards(arr);
         } catch (e){
+          setLastPayload(null);
           setResponse('Error: ' + (e.message || String(e)));
         }
       };
 
-      // /query/<q>/studies → 維持卡片呈現
+      // /query/<q>/studies → 維持卡片 & 原始 JSON
       const queryStudies = async (q) => {
         try{
           setResponse(`Requesting: ${BASE}/query/${encodeURIComponent(q)}/studies ...`);
           setCards([]);
           setResultKind('studies');
           const payload = await fetchFlexible(`${BASE}/query/${encodeURIComponent(q)}/studies`);
+          setLastPayload(payload);
           setResponse('OK\n' + JSON.stringify(payload, null, 2));
-          const arr = Array.isArray(payload) ? payload : extractArray(payload) || [];
+          const arr = extractArray(payload) || [];
           setCards(arr);
         } catch (e){
+          setLastPayload(null);
           setResponse('Error: ' + (e.message || String(e)));
         }
       };
+
+      // 供 Response 區用：把 lastPayload 轉為表格資料
+      const termsForResponse = useMemo(() => {
+        if (resultKind !== 'terms') return [];
+        if (!lastPayload) return cards;
+        const arr = extractArray(lastPayload);
+        return arr || cards;
+      }, [resultKind, lastPayload, cards]);
 
       return (
         <div className="container">
@@ -340,7 +362,7 @@
                   if (q) queryStudies(q);
                 }}>Search</button>
               </div>
-              <div className="hint">支援 AND / OR / NOT；右側會秀原始 JSON。</div>
+              <div className="hint">支援 AND / OR / NOT；右側會秀原始 JSON（Terms 則在 Response 區改為表格）。</div>
             </div>
           </div>
 
@@ -349,9 +371,9 @@
               {resultKind==='terms' ? 'Related Terms' : 'Studies / Associations'}
             </h2>
 
-            {/* Terms → 表格；Studies → 卡片 */}
+            {/* 中段仍維持：Terms →（可留白或加說明），Studies → 卡片 */}
             {resultKind === 'terms'
-              ? <DataTable items={cards} prefer="terms" />
+              ? <div style={{color:'#64748b'}}>（詳細清單請見下方 Response 表格）</div>
               : (
                 <div className="row" style={{flexWrap:'wrap'}}>
                   {cards.slice(0, 60).map((x, i) => (
@@ -369,7 +391,11 @@
 
           <div className="card" style={{marginTop:'12px'}}>
             <h2 style={{fontWeight:600,marginBottom:'8px'}}>Response</h2>
-            <pre id="out">{response}</pre>
+            {/* ✅ Terms：在 Response 區改用表格清單 */}
+            {resultKind === 'terms'
+              ? <DataTable items={termsForResponse} prefer="terms" />
+              : <pre id="out">{response}</pre>
+            }
           </div>
         </div>
       );
